@@ -145,7 +145,7 @@ export default function ExpertDirectory() {
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-bold truncate flex items-center gap-1" style={{ color: 'var(--foreground)' }}>
                     {expert.name || 'Unnamed Agent'}
-                    {isVerified && <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" title="KYC Verified" />}
+                    {isVerified && <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />}
                   </h3>
                   <div className="flex flex-wrap gap-1 mt-1">
                     {expert.expert_specializations?.map((spec: string) => (
