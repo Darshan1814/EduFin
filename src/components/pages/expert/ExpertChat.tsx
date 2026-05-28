@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { useNetworkStore } from '@/lib/networkStore'
 import { useAppStore } from '@/lib/store'
-import { ExpertMessage } from '@/lib/types'
+import { ExpertMessage, StudentProfile } from '@/lib/types'
 import toast from 'react-hot-toast'
 
 export default function ExpertChat() {
@@ -32,7 +32,7 @@ export default function ExpertChat() {
   const activeChat = myChats.find(c => c.id === activeChatId)
   const student = allUsers.find(u => u.id === activeChat?.studentId) || {
     id: activeChat?.studentId, name: 'Student', targetCountry: ['USA'], targetProgram: 'MS CS', cgpa: 8.5, greScore: 320
-  }
+  } as StudentProfile
   
   const chatMessages = messages.filter(m => m.chatId === activeChatId).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/lib/store'
 import { createClient } from '@/lib/supabase/client'
@@ -105,6 +105,15 @@ const MultiAutocomplete = ({ label, field, placeholder, localData, updateLocal }
             e.target.value = ''
           }
         }}
+        onBlur={(e: any) => {
+          // Allow click events on dropdown to fire before blur clears it
+          setTimeout(() => {
+            if (e.target && e.target.value && e.target.value.trim() !== '') {
+              handleAdd(e.target.value.trim())
+              e.target.value = ''
+            }
+          }, 200)
+        }}
       />
       {list.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-2">
@@ -127,14 +136,117 @@ const MultiAutocomplete = ({ label, field, placeholder, localData, updateLocal }
 }
 
 export default function OnboardingFlow() {
-  const { profile, updateProfile, setOnboarded, setCurrentPage, user, setUser } = useAppStore()
-  const [currentStep, setCurrentStep] = useState(1)
+  const { profile, updateProfile, setOnboarded, setCurrentPage, user, setUser, targetOnboardingStep, setTargetOnboardingStep } = useAppStore()
+  const [currentStep, setCurrentStep] = useState(targetOnboardingStep || 1)
   const [loading, setLoading] = useState(false)
   const [localData, setLocalData] = useState<Partial<StudentProfile>>({ ...profile })
 
   const supabase = createClient()
 
+  useEffect(() => {
+    if (targetOnboardingStep) {
+      setTargetOnboardingStep(null)
+    }
+  }, [targetOnboardingStep, setTargetOnboardingStep])
+
+  const syncToDatabase = async (profileData: Partial<StudentProfile>, isFinal = false) => {
+    if (!user) return
+    try {
+      const dbPayload = {
+        name: profileData.name,
+        mobile: profileData.mobile,
+        dob: profileData.dob || null,
+        gender: profileData.gender,
+        city: profileData.city,
+        state: profileData.state,
+        education_level: profileData.educationLevel,
+        
+        tenth_marks: profileData.tenthMarks,
+        twelfth_marks: profileData.twelfthMarks,
+        twelfth_stream: profileData.twelfthStream,
+        undergrad_college: profileData.undergradCollege,
+        undergrad_degree: profileData.undergradDegree,
+        undergrad_specialization: profileData.undergradSpecialization,
+        undergrad_cgpa: profileData.undergradCgpa,
+        undergrad_grad_year: profileData.undergradGradYear,
+        backlogs: profileData.hasBacklogs,
+        research_papers: profileData.hasResearchPapers,
+        internships: profileData.internshipsCount,
+        extracurriculars: profileData.extracurricularRoles,
+        
+        is_working_professional: profileData.isWorkingProfessional,
+        company_name: profileData.companyName,
+        industry: profileData.industry,
+        job_role: profileData.jobRole,
+        years_experience: profileData.yearsExperience,
+        current_ctc: profileData.currentCtc,
+        career_gap: profileData.careerGap,
+        
+        study_goal: profileData.studyGoal,
+        target_countries: profileData.targetCountries || [],
+        target_degree: profileData.targetDegree,
+        target_field: profileData.targetField,
+        intake_target: profileData.intakeTarget,
+        application_stage: profileData.applicationStage,
+        
+        gre_status: profileData.greStatus,
+        gre_score: profileData.greScoreStr,
+        gmat_status: profileData.gmatStatus,
+        gmat_score: profileData.gmatScoreStr,
+        ielts_status: profileData.ieltsStatus,
+        ielts_score: profileData.ieltsScore?.toString() || '',
+        toefl_status: profileData.toeflStatus,
+        toefl_score: profileData.toeflScore?.toString() || '',
+        gate_status: profileData.gateStatus,
+        gate_score: profileData.gateScoreStr,
+        cat_status: profileData.catStatus,
+        cat_score: profileData.catScoreStr,
+        neet_status: profileData.neetStatus,
+        exam_next_date: profileData.examNextDate || null,
+        
+        dream_universities: profileData.dreamUniversities || [],
+        target_universities: profileData.targetUniversitiesList || [],
+        safe_universities: profileData.safeUniversities || [],
+        preference_factors: profileData.preferenceFactors || [],
+        university_research_stage: profileData.universityResearchStage,
+        
+        funding_source: profileData.fundingSource,
+        expected_budget: profileData.expectedBudgetStr,
+        loan_estimate: profileData.loanEstimateStr,
+        collateral_available: profileData.collateralAvailableStr,
+        family_income: profileData.familyIncomeStr,
+        co_applicant: profileData.coApplicantStr,
+        credit_score: profileData.creditScoreStr,
+        
+        doc_passport: profileData.docPassport,
+        doc_transcripts: profileData.docTranscripts,
+        doc_lors: profileData.docLors,
+        doc_sop: profileData.docSop,
+        doc_resume: profileData.docResume,
+        doc_bank_statements: profileData.docBankStatements,
+        doc_visa: profileData.docVisa,
+        
+        preferred_language: profileData.preferredLanguage,
+        notification_preference: profileData.notificationPreference,
+        content_interest: profileData.contentInterest || [],
+        hear_about_us: profileData.hearAboutUs,
+        referral_code: profileData.referralCode,
+        is_onboarded: isFinal ? true : !!profileData.isOnboarded
+      }
+
+      const { error } = await supabase
+        .from('profiles')
+        .update(dbPayload)
+        .eq('id', user.id)
+
+      if (error) console.error("Supabase Save Error:", error)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   const handleNext = () => {
+    syncToDatabase(localData, false)
     if (currentStep < 9) {
       setCurrentStep(s => s + 1)
     } else {
@@ -143,11 +255,13 @@ export default function OnboardingFlow() {
   }
 
   const handleSkip = () => {
+    syncToDatabase(localData, false)
     if (currentStep < 9) setCurrentStep(s => s + 1)
     else finishOnboarding()
   }
 
   const handlePrev = () => {
+    syncToDatabase(localData, false)
     if (currentStep > 1) setCurrentStep(s => s - 1)
   }
 
@@ -162,6 +276,7 @@ export default function OnboardingFlow() {
 
   const updateLocal = (field: keyof StudentProfile, value: any) => {
     setLocalData(prev => ({ ...prev, [field]: value }))
+    updateProfile({ [field]: value })
   }
 
   const finishOnboarding = async () => {
@@ -171,76 +286,8 @@ export default function OnboardingFlow() {
     const dreamScore = calculateDreamScore(localData as StudentProfile)
     const updatedProfile = { ...localData, dreamScore, isOnboarded: true }
     
-    try {
-      if (user) {
-        const dbPayload = {
-          name: updatedProfile.name,
-          mobile: updatedProfile.mobile,
-          dob: updatedProfile.dob,
-          gender: updatedProfile.gender,
-          city: updatedProfile.city,
-          state: updatedProfile.state,
-          education_level: updatedProfile.educationLevel,
-          
-          tenth_marks: updatedProfile.tenthMarks,
-          twelfth_marks: updatedProfile.twelfthMarks,
-          twelfth_stream: updatedProfile.twelfthStream,
-          undergrad_college: updatedProfile.undergradCollege,
-          undergrad_degree: updatedProfile.undergradDegree,
-          undergrad_specialization: updatedProfile.undergradSpecialization,
-          undergrad_cgpa: updatedProfile.undergradCgpa,
-          undergrad_grad_year: updatedProfile.undergradGradYear,
-          backlogs: updatedProfile.hasBacklogs,
-          research_papers: updatedProfile.hasResearchPapers,
-          internships: updatedProfile.internshipsCount,
-          extracurriculars: updatedProfile.extracurricularRoles,
-          
-          is_working_professional: updatedProfile.isWorkingProfessional,
-          company_name: updatedProfile.companyName,
-          industry: updatedProfile.industry,
-          job_role: updatedProfile.jobRole,
-          years_experience: updatedProfile.yearsExperience,
-          current_ctc: updatedProfile.currentCtc,
-          career_gap: updatedProfile.careerGap,
-          
-          study_goal: updatedProfile.studyGoal,
-          target_countries: updatedProfile.targetCountries,
-          target_degree: updatedProfile.targetDegree,
-          target_field: updatedProfile.targetField,
-          intake_target: updatedProfile.intakeTarget,
-          application_stage: updatedProfile.applicationStage,
-          
-          gre_status: updatedProfile.greStatus,
-          gmat_status: updatedProfile.gmatStatus,
-          ielts_status: updatedProfile.ieltsStatus,
-          toefl_status: updatedProfile.toeflStatus,
-          gate_status: updatedProfile.gateStatus,
-          
-          dream_universities: updatedProfile.dreamUniversities,
-          target_universities: updatedProfile.targetUniversitiesList,
-          safe_universities: updatedProfile.safeUniversities,
-          preference_factors: updatedProfile.preferenceFactors,
-          university_research_stage: updatedProfile.universityResearchStage,
-          
-          funding_source: updatedProfile.fundingSource,
-          
-          doc_passport: updatedProfile.docPassport,
-          
-          preferred_language: updatedProfile.preferredLanguage,
-          is_onboarded: true
-        }
-
-        const { error } = await supabase
-          .from('profiles')
-          .update(dbPayload)
-          .eq('id', user.id)
-
-        if (error) console.error("Supabase Save Error:", error)
-      }
-    } catch (e) {
-      console.error(e)
-    }
-
+    await syncToDatabase(updatedProfile, true)
+    
     updateProfile(updatedProfile)
     setOnboarded(true)
     setCurrentPage('dashboard')
@@ -269,7 +316,7 @@ export default function OnboardingFlow() {
                 onPlaceSelected={(place) => {
                   let city = ''
                   let state = ''
-                  place.address_components?.forEach(c => {
+                  place.address_components?.forEach((c: any) => {
                     if (c.types.includes('locality')) city = c.long_name
                     if (c.types.includes('administrative_area_level_1')) state = c.long_name
                   })
@@ -302,6 +349,9 @@ export default function OnboardingFlow() {
                 apiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
                 onPlaceSelected={(place) => {
                   updateLocal('undergradCollege', place.name || '')
+                }}
+                onChange={(e: any) => {
+                  updateLocal('undergradCollege', e.target.value)
                 }}
                 options={{ types: ['establishment'] }}
                 className="input-field"
