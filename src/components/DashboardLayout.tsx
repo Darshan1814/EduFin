@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo } from 'react'
 import { useAppStore } from '@/lib/store'
+import { useTrack } from '@/lib/useTrack'
+import { filterNavSections } from '@/lib/navVisibility'
 import {
   GraduationCap, LayoutDashboard, Brain, Target, TrendingUp,
   DollarSign, Calculator, BookOpen, Shield, MessageCircle,
@@ -14,7 +16,9 @@ import DashboardHome from './pages/DashboardHome'
 import CareerNavigator from './pages/CareerNavigator'
 import ROICalculator from './pages/ROICalculator'
 import AdmissionPredictor from './pages/AdmissionPredictor'
+import DomesticAdmissionPredictor from './pages/DomesticAdmissionPredictor'
 import LoanCenter from './pages/LoanCenter'
+import DomesticLoanCenter from './pages/DomesticLoanCenter'
 import EMICalculator from './pages/EMICalculator'
 import SOPCopilot from './pages/SOPCopilot'
 import VisaSimulator from './pages/VisaSimulator'
@@ -75,6 +79,7 @@ const navSections: { label: string; items: { icon: typeof LayoutDashboard; label
     label: 'Evaluate',
     items: [
       { icon: Target, label: 'Admission Predictor', page: 'admission-predictor' },
+      { icon: Target, label: 'Domestic Predictor', page: 'domestic-admission-predictor' },
       { icon: TrendingUp, label: 'ROI Calculator', page: 'roi-calculator' },
       { icon: Globe, label: 'Currency Risk', page: 'currency-risk' },
     ]
@@ -92,6 +97,7 @@ const navSections: { label: string; items: { icon: typeof LayoutDashboard; label
     label: 'Finance',
     items: [
       { icon: DollarSign, label: 'Loan Center', page: 'loan-center' },
+      { icon: DollarSign, label: 'Domestic Loan Center', page: 'domestic-loan-center' },
       { icon: Calculator, label: 'EMI Calculator', page: 'emi-calculator' },
       { icon: CreditCard, label: 'Loan Apply', page: 'loan-apply' },
     ]
@@ -113,7 +119,9 @@ function PageContent({ page }: { page: PageType }) {
     case 'career-navigator': return <CareerNavigator />
     case 'roi-calculator': return <ROICalculator />
     case 'admission-predictor': return <AdmissionPredictor />
+    case 'domestic-admission-predictor': return <DomesticAdmissionPredictor />
     case 'loan-center': return <LoanCenter />
+    case 'domestic-loan-center': return <DomesticLoanCenter />
     case 'emi-calculator': return <EMICalculator />
     case 'sop-copilot': return <SOPCopilot />
     case 'visa-simulator': return <VisaSimulator />
@@ -139,6 +147,8 @@ function PageContent({ page }: { page: PageType }) {
 
 export default function DashboardLayout() {
   const { currentPage, setCurrentPage, sidebarOpen, toggleSidebar, profile, theme, toggleTheme } = useAppStore()
+  const track = useTrack()
+  const visibleNavSections = useMemo(() => filterNavSections(navSections, track), [track])
 
   const profileScore = useMemo(() => calculateProfileScore(profile), [profile])
   const profilePct = profileScore.totalScore
@@ -269,7 +279,7 @@ export default function DashboardLayout() {
 
         {/* Nav items */}
         <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
-          {navSections.map(section => (
+          {visibleNavSections.map(section => (
             <div key={section.label} className="space-y-1">
               <div className="px-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--foreground-muted)', opacity: 0.5 }}>{section.label}</div>
               {section.items.map(item => (
