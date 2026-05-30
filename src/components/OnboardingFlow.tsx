@@ -12,6 +12,14 @@ import {
 import { countries } from 'countries-list'
 import type { StudentProfile } from '@/lib/types'
 import { calculateDreamScore } from '@/lib/utils'
+import { useTrack } from '@/lib/useTrack'
+import { encodeContentInterest } from '@/lib/contentInterestCodec'
+import EntranceExamPicker from '@/components/EntranceExamPicker'
+import {
+  validateStep5,
+  computeDomesticExamScoreMissing,
+  type ReservationCategory,
+} from '@/lib/onboardingValidation'
 
 const STEPS = [
   { id: 1, title: 'Identity', icon: User },
@@ -295,9 +303,11 @@ const MultiAutocomplete = ({ label, field, placeholder, localData, updateLocal }
 
 export default function OnboardingFlow() {
   const { profile, updateProfile, setOnboarded, setCurrentPage, user, setUser, targetOnboardingStep, setTargetOnboardingStep } = useAppStore()
+  const track = useTrack()
   const [currentStep, setCurrentStep] = useState(targetOnboardingStep || 1)
   const [loading, setLoading] = useState(false)
   const [localData, setLocalData] = useState<Partial<StudentProfile>>({ ...profile })
+  const [step5Errors, setStep5Errors] = useState<Record<string, string>>({})
 
   const supabase = createClient()
 
@@ -386,7 +396,20 @@ export default function OnboardingFlow() {
         
         preferred_language: profileData.preferredLanguage,
         notification_preference: profileData.notificationPreference,
-        content_interest: profileData.contentInterest || [],
+        content_interest: encodeContentInterest({
+          contentInterest: profileData.contentInterest,
+          track: profileData.track,
+          jeeAdvancedRank: profileData.jeeAdvancedRank,
+          gateScore: profileData.gateScore,
+          gateScoreYear: profileData.gateScoreYear,
+          gateRank: profileData.gateRank,
+          catPercentile: profileData.catPercentile,
+          reservationCategory: profileData.reservationCategory,
+          homeState: profileData.homeState,
+          targetInstituteId: profileData.targetInstituteId,
+          domesticExamScoreMissing: profileData.domesticExamScoreMissing,
+          entranceExams: profileData.entranceExams,
+        }),
         hear_about_us: profileData.hearAboutUs,
         referral_code: profileData.referralCode,
         is_onboarded: isFinal ? true : !!profileData.isOnboarded
@@ -404,6 +427,32 @@ export default function OnboardingFlow() {
   }
 
   const handleNext = () => {
+    if (currentStep === 5) {
+      const result = validateStep5({
+        jeeAdvancedRank: localData.jeeAdvancedRank,
+        gateRank: localData.gateRank,
+        gateScore: localData.gateScore,
+        gateScoreYear: localData.gateScoreYear,
+        catPercentile: localData.catPercentile,
+        reservationCategory: localData.reservationCategory,
+        homeState: localData.homeState,
+      })
+      if (!result.ok) {
+        setStep5Errors(result.errors)
+        return
+      }
+      setStep5Errors({})
+      const flag = computeDomesticExamScoreMissing(track, {
+        jeeAdvancedRank: localData.jeeAdvancedRank,
+        gateScore: localData.gateScore,
+        catPercentile: localData.catPercentile,
+      })
+      updateLocal('domesticExamScoreMissing', flag)
+      syncToDatabase({ ...localData, domesticExamScoreMissing: flag }, false)
+      if (currentStep < 9) setCurrentStep(s => s + 1)
+      else finishOnboarding()
+      return
+    }
     syncToDatabase(localData, false)
     if (currentStep < 9) {
       setCurrentStep(s => s + 1)
@@ -614,6 +663,52 @@ export default function OnboardingFlow() {
             {localData.toeflStatus === 'Appeared' && boundInput({ label: "TOEFL Score", field: "toeflScore" })}
             
             {boundInput({ label: "Next Planned Exam Date", field: "examNextDate", type: "date" })}
+
+            {(track === 'domestic' || track === 'both') && (
+              <div className="mt-6 pt-6 border-t border-border space-y-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <BookOpen className="w-5 h-5" /> Indian Exams (Domestic Track)
+                </h3>
+
+                <EntranceExamPicker
+                  value={localData.entranceExams || []}
+                  onChange={(next) => updateLocal('entranceExams', next)}
+                />
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-foreground-secondary mb-1">Reservation Category</label>
+                  <select
+                    className="input-field"
+                    value={localData.reservationCategory ?? ''}
+                    onChange={(e) => updateLocal('reservationCategory', e.target.value === '' ? undefined : (e.target.value as ReservationCategory))}
+                  >
+                    <option value="">Select...</option>
+                    <option value="General">General</option>
+                    <option value="OBC-NCL">OBC-NCL</option>
+                    <option value="EWS">EWS</option>
+                    <option value="SC">SC</option>
+                    <option value="ST">ST</option>
+                    <option value="PwD">PwD</option>
+                  </select>
+                  {step5Errors.reservationCategory && (
+                    <p className="text-danger text-xs mt-1">{step5Errors.reservationCategory}</p>
+                  )}
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-foreground-secondary mb-1">Home State</label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={localData.homeState ?? ''}
+                    onChange={(e) => updateLocal('homeState', e.target.value)}
+                  />
+                  {step5Errors.homeState && (
+                    <p className="text-danger text-xs mt-1">{step5Errors.homeState}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )
       case 6:
