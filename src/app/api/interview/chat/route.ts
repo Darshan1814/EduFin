@@ -1,18 +1,13 @@
 import { NextResponse } from 'next/server'
 import { generateContentWithFallback } from '@/lib/aiClient'
+import { getGroqApiKeys } from '@/lib/groqClient'
 
 interface ChatMessage {
   role: 'assistant' | 'user'
   text: string
 }
 
-const GROQ_KEYS = [
-  process.env.GROQ_API_KEY,
-  process.env.GROQ_FALLBACK_KEY_1,
-  process.env.GROQ_FALLBACK_KEY_2,
-].filter(Boolean) as string[]
-
-const GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'groq/compound']
+const GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'llama-3.3-70b-versatile']
 
 export async function POST(req: Request) {
   try {
@@ -73,7 +68,7 @@ ${shouldConclude ? '4. The candidate has answered sufficient questions. Thank th
 
     // Attempt Groq LLM first
     let responseText: string | null = null
-    for (const key of GROQ_KEYS) {
+    for (const key of getGroqApiKeys()) {
       for (const model of GROQ_MODELS) {
         try {
           const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {

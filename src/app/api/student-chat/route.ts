@@ -1,19 +1,9 @@
 import { NextResponse } from 'next/server'
+import { fetchGroqChat } from '@/lib/groqClient'
 
 export async function POST(req: Request) {
   try {
     const { message, student } = await req.json()
-    let apiKey = process.env.GROQ_API_KEY
-    const backupKey = process.env.GROQ_API_KEY_BACKUP
-    
-    if (!apiKey && !backupKey) {
-      return NextResponse.json({ error: 'Groq API Keys not found' }, { status: 500 })
-    }
-    
-    // If main key is missing but backup exists, use backup as main
-    if (!apiKey && backupKey) {
-      apiKey = backupKey;
-    }
 
     const systemPrompt = `You are a professional AI Student Analyst for the GradPilot platform.
 You are helping an Admissions Expert (Agent) analyze a student's profile.
@@ -42,40 +32,20 @@ IMPORTANT: You must return a STRICT, valid JSON object exactly like this, with N
 }
 If no graph is needed, omit the "graph" key. ONLY output the raw JSON object. Do not wrap in \`\`\`json.`;
 
-    const makeRequest = async (key: string) => {
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${key}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'llama-3.1-8b-instant',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: message }
-          ],
-          temperature: 0.2,
-          response_format: { type: "json_object" }
-        })
-      })
+    const response = await fetchGroqChat({
+      model: 'llama-3.1-8b-instant',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message }
+      ],
+      temperature: 0.2,
+      response_format: { type: 'json_object' }
+    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b'])
 
-      const data = await response.json()
-      if (data.error) throw new Error(data.error.message)
-      return JSON.parse(data.choices[0].message.content)
-    }
-
-    let aiResponse;
-    try {
-      aiResponse = await makeRequest(apiKey as string);
-    } catch (error: any) {
-      if (backupKey && backupKey !== apiKey) {
-        console.log('Primary Groq key failed, trying backup key...');
-        aiResponse = await makeRequest(backupKey);
-      } else {
-        throw error;
-      }
-    }
+    const data = await response.json()
+    if (data.error) throw new Error(data.error.message)
+    const content = data.choices[0].message.content
+    const aiResponse = JSON.parse(content)
     
     return NextResponse.json(aiResponse)
     

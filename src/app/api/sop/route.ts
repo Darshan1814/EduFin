@@ -1,3 +1,5 @@
+import { fetchGroqChat } from '@/lib/groqClient'
+
 export async function POST(request: Request) {
   try {
     const { bulletPoints, mode, profile } = await request.json()
@@ -27,27 +29,15 @@ University Fit: <score>
 Originality: <score>
 Grammar: <score>`
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Here are my key points:\n${bulletPoints}` },
-        ],
-        max_tokens: 1500,
-        temperature: 0.8,
-      }),
+    const response = await fetchGroqChat({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Here are my key points:\n${bulletPoints}` },
+      ],
+      max_tokens: 1500,
+      temperature: 0.8,
     })
-
-    if (!response.ok) {
-      const error = await response.text()
-      return Response.json({ error: `Groq API error: ${error}` }, { status: 500 })
-    }
 
     const data = await response.json()
     const content = data.choices[0].message.content

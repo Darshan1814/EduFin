@@ -1,3 +1,5 @@
+import { fetchGroqChat } from '@/lib/groqClient'
+
 export async function POST(request: Request) {
   try {
     const { universityName, program, country } = await request.json()
@@ -52,18 +54,12 @@ export async function POST(request: Request) {
     }
 
     // Step 2: Use Groq to analyze and create structured admission guide
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert university admission counselor. Based on the search results provided, create a comprehensive step-by-step admission guide for the specified university and program.
+    const groqResponse = await fetchGroqChat({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an expert university admission counselor. Based on the search results provided, create a comprehensive step-by-step admission guide for the specified university and program.
 
 IMPORTANT: Return your response as a valid JSON object with this exact structure:
 {
@@ -96,10 +92,10 @@ IMPORTANT: Return your response as a valid JSON object with this exact structure
 }
 
 Generate 10-15 comprehensive steps covering the entire admission process from start to finish. Be specific and actionable. Always respond with valid JSON only, no markdown formatting.`
-          },
-          {
-            role: 'user',
-            content: `University: ${universityName}
+        },
+        {
+          role: 'user',
+          content: `University: ${universityName}
 Program: ${program}
 Country: ${country}
 
@@ -107,17 +103,11 @@ Search Results:
 ${searchResults}
 
 Please create a comprehensive admission guide based on these results.`
-          }
-        ],
-        max_tokens: 2048,
-        temperature: 0.3,
-      }),
+        }
+      ],
+      max_tokens: 2048,
+      temperature: 0.3,
     })
-
-    if (!groqResponse.ok) {
-      const error = await groqResponse.text()
-      return Response.json({ error: `AI analysis error: ${error}` }, { status: 500 })
-    }
 
     const groqData = await groqResponse.json()
     const content = groqData.choices?.[0]?.message?.content || ''

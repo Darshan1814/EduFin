@@ -48,7 +48,7 @@ ENV NEXT_PUBLIC_VAPI_ASSISTANT_ID=$NEXT_PUBLIC_VAPI_ASSISTANT_ID
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 # Dummy values for backend keys at build time so API routes don't crash
-# during static analysis. Real values are injected at runtime via Kubernetes.
+# during static analysis. Real values are injected at runtime via Kubernetes/Deployment.
 ENV SUPABASE_SERVICE_ROLE_KEY="dummy-build-key"
 ENV GROQ_API_KEY="dummy-build-key"
 ENV GROQ_API_KEY_BACKUP="dummy-build-key"
@@ -57,7 +57,10 @@ ENV GROQ_FALLBACK_KEY_2="dummy-build-key"
 ENV GEMINI_API_KEY="dummy-build-key"
 ENV SERPER_API_KEY="dummy-build-key"
 ENV GOOGLE_PLACES_API_KEY="dummy-build-key"
-ENV VAPI_PRIVATE_KEY="dummy-build-key"
+ENV ELEVENLABS_API_KEY="dummy-build-key"
+ENV ELEVENLABS_VOICE_ID="dummy-build-key"
+ENV ELEVENLABS_FALLBACK_VOICE_ID="dummy-build-key"
+ENV ELEVENLABS_MODEL_ID="eleven_multilingual_v2"
 ENV EXCHANGE_RATE_API_KEY="dummy-build-key"
 ENV RAPIDAPI_KEY="dummy-build-key"
 

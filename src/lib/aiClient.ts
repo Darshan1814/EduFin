@@ -22,6 +22,7 @@
 //     is honoured without restarting the process.
 
 import type { GoogleGenAI } from '@google/genai'
+import { getGroqApiKeys } from '@/lib/groqClient'
 
 export interface GenerateOptions {
   model: string
@@ -195,12 +196,7 @@ export async function generateContentWithFallback(
       schemaHint = undefined
     }
   }
-  const keys = [
-    process.env.GROQ_FALLBACK_KEY_1,
-    process.env.GROQ_FALLBACK_KEY_2,
-    // Last resort: re-use the user-facing GROQ_API_KEY if set (already in env).
-    process.env.GROQ_API_KEY,
-  ].filter((k): k is string => !!k && k !== 'dummy-build-key')
+  const keys = getGroqApiKeys()
 
   if (!keys.length) {
     console.warn(
