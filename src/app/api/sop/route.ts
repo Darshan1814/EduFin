@@ -30,7 +30,7 @@ Originality: <score>
 Grammar: <score>`
 
     const response = await fetchGroqChat({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Here are my key points:\n${bulletPoints}` },

@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
     // Step 2: Use Groq to analyze and create structured admission guide
     const groqResponse = await fetchGroqChat({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       messages: [
         {
           role: 'system',

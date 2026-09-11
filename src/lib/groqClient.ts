@@ -21,14 +21,14 @@ export async function fetchGroqChat(
     stream?: boolean
     response_format?: { type: string }
   },
-  modelsToTry: string[] = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b']
+  modelsToTry: string[] = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'openai/gpt-oss-20b']
 ): Promise<Response> {
   const keys = getGroqApiKeys()
   if (keys.length === 0) {
     throw new Error('No valid Groq API key found in environment')
   }
 
-  const requestedModel = body.model || 'llama-3.3-70b-versatile'
+  const requestedModel = body.model || 'openai/gpt-oss-120b'
   const modelList = Array.from(new Set([requestedModel, ...modelsToTry]))
 
   let lastError: Error | null = null

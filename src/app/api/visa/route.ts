@@ -18,7 +18,7 @@ FEEDBACK: <your feedback>
 SUGGESTION: <better way to answer if score < 7>`
 
     const response = await fetchGroqChat({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Question ${questionNumber}/10: "${question}"\n\nStudent's answer: "${answer}"` },

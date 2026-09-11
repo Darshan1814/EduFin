@@ -7,7 +7,7 @@ interface ChatMessage {
   text: string
 }
 
-const GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'llama-3.3-70b-versatile']
+const GROQ_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'openai/gpt-oss-20b']
 
 export async function POST(req: Request) {
   try {

@@ -7,19 +7,31 @@ const GROQ_KEYS = [
   import.meta.env.VITE_GROQ_FALLBACK_KEY_2,
 ].filter(Boolean) as string[];
 
+const GROQ_MODELS = ["openai/gpt-oss-120b", "qwen/qwen3.6-27b", "openai/gpt-oss-20b"];
+
 async function callGroqChat(params: any): Promise<any> {
   let lastErr: any = null;
+  const requestedModel = params.model || "openai/gpt-oss-120b";
+  const models = Array.from(new Set([requestedModel, ...GROQ_MODELS]));
+
   for (const key of GROQ_KEYS) {
-    try {
-      // @ts-ignore
-      const client = new Groq({ apiKey: key, dangerouslyAllowBrowser: true });
-      return await client.chat.completions.create(params);
-    } catch (err: any) {
-      console.warn(`[EduPilot] Groq key (${key.slice(0, 8)}...) error:`, err?.message || err);
-      lastErr = err;
+    for (const model of models) {
+      try {
+        // @ts-ignore
+        const client = new Groq({ apiKey: key, dangerouslyAllowBrowser: true });
+        return await client.chat.completions.create({ ...params, model });
+      } catch (err: any) {
+        console.warn(`[EduPilot] Groq key (${key.slice(0, 8)}...) model ${model} error:`, err?.message || err);
+        lastErr = err;
+        // If it's a 404 model not found, immediately try next model with same key
+        if (err?.status === 404 || err?.error?.code === "model_not_found") {
+          continue;
+        }
+        break; // Key rate limit or auth error, try next key
+      }
     }
   }
-  throw lastErr || new Error("All Groq keys failed");
+  throw lastErr || new Error("All Groq keys and models failed");
 }
 
 const SUPABASE_URL = "https://ecbqhlfguzkwffqbtbqz.supabase.co";
@@ -321,7 +333,7 @@ FORMATTING RULES (STRICT):
 
     const completion = await callGroqChat({
       messages: [{ role: "user", content: prompt }],
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
     });
 
     return { success: true, analysis: completion.choices[0]?.message?.content };
@@ -413,7 +425,7 @@ FORMATTING RULES (STRICT):
 
     const completion = await callGroqChat({
       messages: messages as any,
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
     });
 
     return { success: true, response: completion.choices[0]?.message?.content };
@@ -600,7 +612,7 @@ ${JSON.stringify(payload.fields).slice(0, 6000)}
 
     const completion = await callGroqChat({
       messages: [{ role: "user", content: prompt }],
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       temperature: 0.1,
       response_format: { type: "json_object" } as any,
     });

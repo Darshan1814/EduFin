@@ -33,14 +33,14 @@ IMPORTANT: You must return a STRICT, valid JSON object exactly like this, with N
 If no graph is needed, omit the "graph" key. ONLY output the raw JSON object. Do not wrap in \`\`\`json.`;
 
     const response = await fetchGroqChat({
-      model: 'llama-3.1-8b-instant',
+      model: 'openai/gpt-oss-120b',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: message }
       ],
       temperature: 0.2,
       response_format: { type: 'json_object' }
-    }, ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b'])
+    }, ['openai/gpt-oss-120b', 'qwen/qwen3.6-27b', 'openai/gpt-oss-20b'])
 
     const data = await response.json()
     if (data.error) throw new Error(data.error.message)

@@ -2,8 +2,8 @@
 //
 // Order of attempts:
 //   1) Gemini (`gemini-2.5-flash` etc.) via the user's GEMINI_API_KEY
-//   2) Groq llama-3.3-70b-versatile, key #1 (GROQ_FALLBACK_KEY_1)
-//   3) Groq llama-3.3-70b-versatile, key #2 (GROQ_FALLBACK_KEY_2)
+//   2) Groq openai/gpt-oss-120b, key #1 (GROQ_FALLBACK_KEY_1)
+//   3) Groq openai/gpt-oss-120b, key #2 (GROQ_FALLBACK_KEY_2)
 //
 // The wrapper returns an object shaped like Gemini's response so the
 // downstream consumer (`resp.text`) keeps working unchanged.
@@ -35,7 +35,8 @@ export interface GenerateResult {
 }
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL = 'llama-3.3-70b-versatile'
+const GROQ_MODEL = 'openai/gpt-oss-120b'
+const GROQ_BACKUP_MODEL = 'qwen/qwen3.6-27b'
 
 function flattenContents(contents: any): { system?: string; user: string } {
   // Gemini accepts a string OR an array of parts. We collapse to a single
@@ -90,60 +91,62 @@ async function callGroq(
   }
   messages.push({ role: 'user', content: prompt.user })
 
-  const body: any = {
-    model: GROQ_MODEL,
-    messages,
-    temperature: 0.2,
-    // Keep generous so long, schema-rich JSON outputs (university lists,
-    // college tables, journey phases) don't get truncated.
-    max_tokens: 8192,
-  }
-  if (wantJson) body.response_format = { type: 'json_object' }
+  const models = [GROQ_MODEL, GROQ_BACKUP_MODEL]
+  for (const model of models) {
+    const body: any = {
+      model,
+      messages,
+      temperature: 0.2,
+      max_tokens: 8192,
+    }
+    if (wantJson) body.response_format = { type: 'json_object' }
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 90_000)
-  try {
-    const res = await fetch(GROQ_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      const errBody = await res.text().catch(() => '')
-      console.warn(
-        `[aiClient] Groq fallback HTTP ${res.status} (key ${apiKey.slice(0, 12)}…):`,
-        errBody.slice(0, 300),
-      )
-      return null
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 90_000)
+    try {
+      const res = await fetch(GROQ_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '')
+        console.warn(
+          `[aiClient] Groq fallback HTTP ${res.status} model ${model} (key ${apiKey.slice(0, 12)}…):`,
+          errBody.slice(0, 300),
+        )
+        if (res.status === 404) continue
+        return null
+      }
+      const data: any = await res.json()
+      let text: string = data?.choices?.[0]?.message?.content ?? ''
+      if (!text) {
+        console.warn('[aiClient] Groq fallback returned empty content')
+        return null
+      }
+      // Some Groq runs wrap JSON in ```json fences despite response_format.
+      if (wantJson) {
+        const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
+        if (fence) text = fence[1].trim()
+        // Trim leading/trailing prose around a top-level JSON object/array.
+        const first = text.search(/[{\[]/)
+        const lastObj = text.lastIndexOf('}')
+        const lastArr = text.lastIndexOf(']')
+        const last = Math.max(lastObj, lastArr)
+        if (first >= 0 && last > first) text = text.slice(first, last + 1)
+      }
+      return text || null
+    } catch (err: any) {
+      console.warn('[aiClient] Groq fallback error:', err?.message || err)
+    } finally {
+      clearTimeout(timer)
     }
-    const data: any = await res.json()
-    let text: string = data?.choices?.[0]?.message?.content ?? ''
-    if (!text) {
-      console.warn('[aiClient] Groq fallback returned empty content')
-      return null
-    }
-    // Some Groq runs wrap JSON in ```json fences despite response_format.
-    if (wantJson) {
-      const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i)
-      if (fence) text = fence[1].trim()
-      // Trim leading/trailing prose around a top-level JSON object/array.
-      const first = text.search(/[{\[]/)
-      const lastObj = text.lastIndexOf('}')
-      const lastArr = text.lastIndexOf(']')
-      const last = Math.max(lastObj, lastArr)
-      if (first >= 0 && last > first) text = text.slice(first, last + 1)
-    }
-    return text || null
-  } catch (err: any) {
-    console.warn('[aiClient] Groq fallback error:', err?.message || err)
-    return null
-  } finally {
-    clearTimeout(timer)
   }
+  return null
 }
 
 /**
