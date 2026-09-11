@@ -1,12 +1,30 @@
 import Groq from "groq-sdk";
 import { createClient } from "@supabase/supabase-js";
 
-const GROQ_API_KEY = import.meta.env.VITE_GROQ_API_KEY;
+const GROQ_KEYS = [
+  import.meta.env.VITE_GROQ_API_KEY,
+  import.meta.env.VITE_GROQ_FALLBACK_KEY_1,
+  import.meta.env.VITE_GROQ_FALLBACK_KEY_2,
+].filter(Boolean) as string[];
+
+async function callGroqChat(params: any): Promise<any> {
+  let lastErr: any = null;
+  for (const key of GROQ_KEYS) {
+    try {
+      // @ts-ignore
+      const client = new Groq({ apiKey: key, dangerouslyAllowBrowser: true });
+      return await client.chat.completions.create(params);
+    } catch (err: any) {
+      console.warn(`[EduPilot] Groq key (${key.slice(0, 8)}...) error:`, err?.message || err);
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("All Groq keys failed");
+}
+
 const SUPABASE_URL = "https://ecbqhlfguzkwffqbtbqz.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVjYnFobGZndXprd2ZmcWJ0YnF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NjI1NDcsImV4cCI6MjA5NTUzODU0N30.aUWH4zHGvLl2ylUORZ3bMz7w0PPBUBrRCeRyfXSv22s";
 
-// @ts-ignore
-const groq = new Groq({ apiKey: GROQ_API_KEY, dangerouslyAllowBrowser: true });
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: false },
 });
@@ -301,8 +319,7 @@ FORMATTING RULES (STRICT):
 - Use "Step 1: ", "Step 2: " format for instructions.
 `;
 
-    // @ts-ignore
-    const completion = await groq.chat.completions.create({
+    const completion = await callGroqChat({
       messages: [{ role: "user", content: prompt }],
       model: "llama-3.3-70b-versatile",
     });
@@ -394,8 +411,7 @@ FORMATTING RULES (STRICT):
       { role: "user", content: payload.newMessage },
     ];
 
-    // @ts-ignore
-    const completion = await groq.chat.completions.create({
+    const completion = await callGroqChat({
       messages: messages as any,
       model: "llama-3.3-70b-versatile",
     });
@@ -582,8 +598,7 @@ Form fields (JSON array):
 ${JSON.stringify(payload.fields).slice(0, 6000)}
 `.trim();
 
-    // @ts-ignore
-    const completion = await groq.chat.completions.create({
+    const completion = await callGroqChat({
       messages: [{ role: "user", content: prompt }],
       model: "llama-3.3-70b-versatile",
       temperature: 0.1,
