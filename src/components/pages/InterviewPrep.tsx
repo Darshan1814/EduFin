@@ -133,11 +133,36 @@ export default function InterviewPrep() {
   const [isUserListening, setIsUserListening] = useState(false)
   const [currentSpeechInput, setCurrentSpeechInput] = useState('')
   const [manualText, setManualText] = useState('')
+  const [micPermissionDenied, setMicPermissionDenied] = useState(false)
+  const [micSupported, setMicSupported] = useState(true)
 
   const callStartRef = useRef<number>(0)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const recognitionRef = useRef<any>(null)
+  const recognitionActiveRef = useRef<boolean>(false)
+  const restartTimerRef = useRef<any>(null)
   const transcriptRef = useRef<TranscriptLine[]>([])
+
+  const callStatusRef = useRef<CallStatus>('idle')
+  const isAiSpeakingRef = useRef<boolean>(false)
+  const isUserListeningRef = useRef<boolean>(false)
+  const mutedRef = useRef<boolean>(false)
+
+  useEffect(() => {
+    callStatusRef.current = callStatus
+  }, [callStatus])
+
+  useEffect(() => {
+    isAiSpeakingRef.current = isAiSpeaking
+  }, [isAiSpeaking])
+
+  useEffect(() => {
+    isUserListeningRef.current = isUserListening
+  }, [isUserListening])
+
+  useEffect(() => {
+    mutedRef.current = muted
+  }, [muted])
 
   useEffect(() => {
     transcriptRef.current = transcript
@@ -171,8 +196,36 @@ export default function InterviewPrep() {
     [profile],
   )
 
+  // Explicitly prompt user for mic permission in Chrome
+  const requestMicrophoneAccess = async (): Promise<boolean> => {
+    if (typeof window === 'undefined') return false
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.warn('getUserMedia not supported in this browser')
+      setMicSupported(false)
+      return false
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Permission granted! Stop the test stream tracks so the hardware lock is released
+      stream.getTracks().forEach((track) => track.stop())
+      setMicPermissionDenied(false)
+      return true
+    } catch (err: any) {
+      console.warn('Microphone permission error:', err)
+      setMicPermissionDenied(true)
+      toast.error('Microphone blocked. Please click the lock icon in the Chrome URL bar to allow microphone access.')
+      return false
+    }
+  }
+
   // Stop any active audio and speech recognition
   const stopAudioAndRecognition = () => {
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current)
+      restartTimerRef.current = null
+    }
+
     if (audioRef.current) {
       try {
         audioRef.current.pause()
@@ -183,25 +236,29 @@ export default function InterviewPrep() {
       audioRef.current = null
     }
     setIsAiSpeaking(false)
+    isAiSpeakingRef.current = false
 
     if (recognitionRef.current) {
       try {
         recognitionRef.current.onresult = null
         recognitionRef.current.onend = null
         recognitionRef.current.onerror = null
-        recognitionRef.current.stop()
+        recognitionRef.current.abort()
       } catch {
         /* ignore */
       }
       recognitionRef.current = null
     }
+    recognitionActiveRef.current = false
     setIsUserListening(false)
+    isUserListeningRef.current = false
   }
 
   // Speak AI text using ElevenLabs TTS
   const speakText = async (text: string) => {
     stopAudioAndRecognition()
     setIsAiSpeaking(true)
+    isAiSpeakingRef.current = true
 
     try {
       const res = await fetch('/api/interview/tts', {
@@ -219,85 +276,127 @@ export default function InterviewPrep() {
       const audio = new Audio(audioUrl)
       audioRef.current = audio
 
-      audio.onended = () => {
+      const handleAudioFinished = () => {
         setIsAiSpeaking(false)
+        isAiSpeakingRef.current = false
         URL.revokeObjectURL(audioUrl)
-        if (callStatus === 'live' || callStatus === 'connecting') {
+        if (callStatusRef.current === 'live') {
           startSpeechListening()
         }
       }
 
-      audio.onerror = () => {
-        setIsAiSpeaking(false)
-        URL.revokeObjectURL(audioUrl)
-        if (callStatus === 'live' || callStatus === 'connecting') {
-          startSpeechListening()
-        }
-      }
+      audio.onended = handleAudioFinished
+      audio.onerror = handleAudioFinished
 
       await audio.play()
     } catch (e: any) {
       console.warn('[tts] Audio play failed, falling back to listening', e)
       setIsAiSpeaking(false)
-      if (callStatus === 'live' || callStatus === 'connecting') {
+      isAiSpeakingRef.current = false
+      if (callStatusRef.current === 'live') {
         startSpeechListening()
       }
     }
   }
 
-  // Start SpeechRecognition in browser
+  // Start SpeechRecognition in browser with Chrome fix
   const startSpeechListening = () => {
     if (typeof window === 'undefined') return
+    if (isAiSpeakingRef.current || mutedRef.current) return
+    if (recognitionActiveRef.current) return
+
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
     if (!SpeechRecognition) {
       console.warn('SpeechRecognition not supported in browser, manual input available')
-      setIsUserListening(true)
+      setMicSupported(false)
       return
     }
 
     try {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.onresult = null
+          recognitionRef.current.onend = null
+          recognitionRef.current.onerror = null
+          recognitionRef.current.abort()
+        } catch {
+          /* ignore */
+        }
+        recognitionRef.current = null
+      }
+
       const recognition = new SpeechRecognition()
       recognition.continuous = true
       recognition.interimResults = true
+      recognition.maxAlternatives = 1
       recognition.lang = selectedLang.speechLocale || 'en-US'
 
       recognition.onstart = () => {
+        recognitionActiveRef.current = true
         setIsUserListening(true)
+        isUserListeningRef.current = true
+        setMicPermissionDenied(false)
       }
 
       recognition.onresult = (event: any) => {
-        let interim = ''
-        let final = ''
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          const transcriptText = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            final += transcriptText
-          } else {
-            interim += transcriptText
-          }
+        let accumulated = ''
+        for (let i = 0; i < event.results.length; ++i) {
+          accumulated += event.results[i][0].transcript + ' '
         }
-        const combined = (final || interim).trim()
-        if (combined) {
-          setCurrentSpeechInput(combined)
+        const clean = accumulated.trim()
+        if (clean) {
+          setCurrentSpeechInput(clean)
         }
       }
 
       recognition.onerror = (event: any) => {
-        if (event.error !== 'no-speech') {
-          console.warn('[speech-recognition] error', event.error)
+        console.warn('[speech-recognition] error', event.error)
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          setMicPermissionDenied(true)
+          setIsUserListening(false)
+          isUserListeningRef.current = false
+          recognitionActiveRef.current = false
+          toast.error('Chrome microphone access is blocked. Click the lock icon in the Chrome URL bar to Allow Microphone.')
+        } else if (event.error === 'audio-capture') {
+          setMicPermissionDenied(true)
+          setIsUserListening(false)
+          isUserListeningRef.current = false
+          recognitionActiveRef.current = false
+          toast.error('No microphone found. Please connect a microphone or use keyboard.')
+        } else if (event.error === 'no-speech') {
+          // Silent pause, keep alive
         }
       }
 
       recognition.onend = () => {
+        recognitionActiveRef.current = false
+        setIsUserListening(false)
+        isUserListeningRef.current = false
+
         // Automatically restart if still in live mode and AI is not speaking
-        if (callStatus === 'live' && !isAiSpeaking && recognitionRef.current === recognition) {
-          try {
-            recognition.start()
-          } catch {
-            /* ignore */
-          }
+        if (
+          callStatusRef.current === 'live' &&
+          !isAiSpeakingRef.current &&
+          !mutedRef.current &&
+          recognitionRef.current === recognition
+        ) {
+          clearTimeout(restartTimerRef.current)
+          restartTimerRef.current = setTimeout(() => {
+            if (
+              callStatusRef.current === 'live' &&
+              !isAiSpeakingRef.current &&
+              !mutedRef.current &&
+              !recognitionActiveRef.current
+            ) {
+              try {
+                recognition.start()
+              } catch {
+                /* ignore */
+              }
+            }
+          }, 300)
         }
       }
 
@@ -305,17 +404,23 @@ export default function InterviewPrep() {
       recognition.start()
     } catch (err) {
       console.warn('[speech-recognition] start error', err)
-      setIsUserListening(true)
+      recognitionActiveRef.current = false
+      setIsUserListening(false)
+      isUserListeningRef.current = false
     }
   }
 
   // Start the interview call
   const startCall = async () => {
     setCallStatus('connecting')
+    callStatusRef.current = 'connecting'
     setReport(null)
     setTranscript([])
     setCurrentSpeechInput('')
     setManualText('')
+
+    // Request Chrome microphone permission on the click gesture
+    await requestMicrophoneAccess()
 
     try {
       // 1. Fetch initial opening question framed by Groq in chosen language
@@ -342,6 +447,7 @@ export default function InterviewPrep() {
 
       setTranscript([firstLine])
       setCallStatus('live')
+      callStatusRef.current = 'live'
 
       // 2. Pronounce question with ElevenLabs TTS
       await speakText(questionText)
@@ -350,6 +456,7 @@ export default function InterviewPrep() {
       const msg = typeof e?.message === 'string' ? e.message : 'Could not start interview'
       toast.error(msg)
       setCallStatus('idle')
+      callStatusRef.current = 'idle'
       stopAudioAndRecognition()
     }
   }
@@ -788,16 +895,83 @@ export default function InterviewPrep() {
                   borderColor: isUserListening ? '#10b981' : 'var(--border)',
                 }}
               >
-                <div className="flex items-center justify-between mb-2">
+                {micPermissionDenied && (
+                  <div className="mb-3 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                      <span>
+                        Chrome microphone permission blocked. Click the <strong>camera/lock icon</strong> in your browser URL bar, allow microphone, and tap &quot;Allow Mic&quot;.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        requestMicrophoneAccess().then((ok) => {
+                          if (ok) startSpeechListening()
+                        })
+                      }}
+                      className="ml-2 px-3 py-1 rounded-lg bg-amber-500 text-slate-950 font-bold hover:bg-amber-400 flex-shrink-0 text-[11px]"
+                    >
+                      Allow Mic
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between mb-2.5">
                   <span className="text-xs font-bold text-foreground-secondary flex items-center gap-1.5">
                     <Mic className={`w-3.5 h-3.5 ${isUserListening ? 'text-emerald-500 animate-pulse' : 'text-foreground-muted'}`} />
                     Your Answer ({selectedLang.label}):
                   </span>
-                  {currentSpeechInput && (
-                    <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
-                      Speech detected
-                    </span>
-                  )}
+
+                  <div className="flex items-center gap-2">
+                    {currentSpeechInput && (
+                      <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium">
+                        Speech detected
+                      </span>
+                    )}
+
+                    {/* Dedicated Mic Toggle Button */}
+                    <button
+                      type="button"
+                      disabled={isAiSpeaking}
+                      onClick={() => {
+                        if (isUserListening) {
+                          if (recognitionRef.current) {
+                            try {
+                              recognitionRef.current.abort()
+                            } catch {
+                              /* ignore */
+                            }
+                          }
+                          recognitionActiveRef.current = false
+                          setIsUserListening(false)
+                          isUserListeningRef.current = false
+                        } else {
+                          requestMicrophoneAccess().then((ok) => {
+                            if (ok) startSpeechListening()
+                          })
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition-all ${
+                        isUserListening
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-sm'
+                          : 'bg-white/10 hover:bg-white/15 text-foreground-secondary border border-border'
+                      }`}
+                      title={isUserListening ? 'Microphone is listening (click to pause)' : 'Click to turn on microphone'}
+                    >
+                      {isUserListening ? (
+                        <>
+                          <Mic className="w-3 h-3 text-emerald-400 animate-pulse" />
+                          <span>Mic Active</span>
+                        </>
+                      ) : (
+                        <>
+                          <Mic className="w-3 h-3" />
+                          <span>Tap to Speak</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
@@ -811,7 +985,13 @@ export default function InterviewPrep() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') handleAnswerSubmit()
                     }}
-                    placeholder={isAiSpeaking ? 'Arjuna is speaking…' : `Speak into mic or type your answer in ${selectedLang.label}…`}
+                    placeholder={
+                      isAiSpeaking
+                        ? 'Arjuna is speaking…'
+                        : isUserListening
+                        ? `Listening in ${selectedLang.label}… speak into mic or type here…`
+                        : `Speak into mic or type your answer in ${selectedLang.label}…`
+                    }
                     className="input-field flex-1 text-sm"
                     disabled={isAiSpeaking}
                   />
